@@ -1,113 +1,61 @@
-// Define phishing domains outside functions for better access
-const phishingDomains = [
-    'k4i.tech',
-    'google.ca',
-    'suspicious-login.net',
-    'definitely-not-safe.com'
-];
+async function updateCurrentUrl() {
+        
+    try {
+        const tabs = await chrome.tabs.query({active: true, currentWindow: true});
+        const currentTab = tabs[0]; //get the current tab   
+        const currentUrl = currentTab.url; //get the current URL    
+        
+        document.getElementById('current-url').textContent = truncateUrl(currentUrl);                   
+    } catch (error) {
+        console.error('Error updating current URL:', error);
+    }
+} 
+            
 
 document.addEventListener('DOMContentLoaded', function() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        const currentTab = tabs[0];
-        const url = currentTab.url;
-        
-        document.getElementById('currentUrl').textContent = url;
-        console.log('Current URL:', url);
-        
-        checkIfPhishing(url);
-    });
-    
-    document.getElementById('checkNow').addEventListener('click', function() {
-        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-            const currentTab = tabs[0];
-            checkIfPhishing(currentTab.url);
-        });
-    });
-});
+    updateCurrentUrl();
+}); //fetch the current URL when the popup is loaded
 
-function checkIfPhishing(url) {
+document.getElementById('refresh-scan').addEventListener('click', function() {
+    updateCurrentUrl();
+}); //refresh button
+
+chrome.tabs.onUpdated.addListener(function(tabId, changeInfo) {
+    if (changeInfo.status === 'complete') {
+        updateCurrentUrl();
+    }
+}); //auto-refresh when the user changes tabs.
+
+function truncateUrl(url) {
     try {
-        const urlObj = new URL(url);
-        const hostname = urlObj.hostname.toLowerCase(); // Convert to lowercase
-        console.log('Checking hostname:', hostname);
-        
-        // Better URL matching
-        const isPhishing = phishingDomains.some(domain => {
-            // Remove 'www.' if present for consistent comparison
-            const cleanHostname = hostname.replace(/^www\./, '');
-            const match = cleanHostname === domain;  // Exact match instead of includes
-            console.log(`Checking ${domain} against ${cleanHostname}: ${match}`);
-            return match;
-        });
-        
-        if (isPhishing) {
-            chrome.action.setBadgeText({ text: '!' });
-            chrome.action.setBadgeBackgroundColor({ color: '#FF0000' });
-        } else {
-            chrome.action.setBadgeText({ text: '' });
-        }
-        
-        const statusContainer = document.querySelector('.status-container');
-        const statusMessage = document.getElementById('statusMessage');
-        
-        console.log('Phishing check result:', isPhishing);
-        
-        if (isPhishing) {
-            statusContainer.className = 'status-container unsafe';
-            statusMessage.textContent = 'WARNING: This site appears to be unsafe!';
-            addToRecentChecks(hostname, false);
-        } else {
-            statusContainer.className = 'status-container safe';
-            statusMessage.textContent = 'Site appears to be safe';
-            addToRecentChecks(hostname, true);
-        }
-
-        // Add debug information
-        addDebugInfo(hostname, isPhishing);
-
+        const parsedUrl = new URL(url);
+        return parsedUrl.hostname; //return the hostname of the URL
     } catch (error) {
-        console.error('Error checking URL:', error);
-        statusMessage.textContent = 'Error checking site security';
+        console.error('Error parsing URL:', error);
+    }
+}; //shorten the url to just the hostname (domain name)
+
+async function sendMessage() {
+    const userInput = document.getElementById('user-input').value;
+
+    if (userInput) {
+        const chatBox = document.getElementById('chat-box');
+        chatBox.innerHTML += `<p><strong>You:</strong> ${userInput}</p>`;
+        document.getElementById('user-input').value = ''; // Clear input
+
+        // Send the user input to the Flask backend
+        const response = await fetch('http://127.0.0.1:5000/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ message: userInput }), // Send the user input to the server
+        });
+
+        const data = await response.json();
+        chatBox.innerHTML += `<p><strong>Assistant:</strong> ${data.response}</p>`;
     }
 }
 
-// New function to add debug information to the popup
-function addDebugInfo(hostname, isPhishing) {
-    const debugDiv = document.createElement('div');
-    debugDiv.style.marginTop = '10px';
-    debugDiv.style.padding = '10px';
-    debugDiv.style.backgroundColor = '#f0f0f0';
-    debugDiv.style.fontSize = '12px';
-    
-    debugDiv.innerHTML = `
-        <strong>Debug Information:</strong><br>
-        Checked Domain: ${hostname}<br>
-        Result: ${isPhishing ? 'Unsafe' : 'Safe'}<br>
-        Checking against: ${phishingDomains.join(', ')}<br>
-    `;
-    
-    // Remove old debug info if it exists
-    const oldDebug = document.querySelector('.debug-info');
-    if (oldDebug) {
-        oldDebug.remove();
-    }
-    
-    debugDiv.className = 'debug-info';
-    document.body.appendChild(debugDiv);
-}
-
-function addToRecentChecks(url, isSafe) {
-    const recentList = document.getElementById('recentList');
-    const listItem = document.createElement('li');
-    listItem.textContent = `${url} - ${isSafe ? ' Safe' : ' Unsafe'}`;
-    
-    if (recentList.firstChild && recentList.firstChild.textContent === 'No recent checks') {
-        recentList.innerHTML = '';
-    }
-    
-    recentList.insertBefore(listItem, recentList.firstChild);
-    
-    while (recentList.children.length > 5) {
-        recentList.removeChild(recentList.lastChild);
-    }
-}
+// Add event listener for the send button
+document.getElementById('send-button').addEventListener('click', sendMessage);
